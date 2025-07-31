@@ -22,7 +22,7 @@ def load_data(symbol, start, end, interval):
     df = yf.download(symbol, start=start, end=end + timedelta(days=1), interval=interval)
     if df.empty:
         return pd.DataFrame()
-    df.columns = [str(col).capitalize() for col in df.columns]
+    df.columns = df.columns.str.strip().str.title()  # Robust capitalization
     df.dropna(inplace=True)
     df.reset_index(inplace=True)
     if 'Datetime' not in df.columns:
@@ -31,6 +31,7 @@ def load_data(symbol, start, end, interval):
         else:
             df.insert(0, 'Datetime', pd.to_datetime(df.index))
     return df
+
 
 df = load_data(ticker, start_date, end_date, interval)
 
