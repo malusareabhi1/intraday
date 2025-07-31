@@ -44,16 +44,27 @@ def load_data(symbol, start, end, interval):
 df = load_data(ticker, start_date, end_date, interval)
 
 # ---------------------- Apply Strategy
+# ---------------------- Apply Strategy
 signals = []
 if not df.empty:
-    df['EMA9'] = EMAIndicator(close=df['Close'], window=9).ema_indicator()
-    df['EMA21'] = EMAIndicator(close=df['Close'], window=21).ema_indicator()
+    close_col = None
+    for col in df.columns:
+        if "close" in col.lower() and "adj" not in col.lower():
+            close_col = col
+            break
 
-    for i in range(1, len(df)):
-        if df['EMA9'][i-1] < df['EMA21'][i-1] and df['EMA9'][i] > df['EMA21'][i]:
-            signals.append({'time': df['Datetime'][i], 'price': df['Close'][i], 'type': 'BUY'})
-        elif df['EMA9'][i-1] > df['EMA21'][i-1] and df['EMA9'][i] < df['EMA21'][i]:
-            signals.append({'time': df['Datetime'][i], 'price': df['Close'][i], 'type': 'SELL'})
+    if close_col:
+        df['EMA9'] = EMAIndicator(close=df[close_col], window=9).ema_indicator()
+        df['EMA21'] = EMAIndicator(close=df[close_col], window=21).ema_indicator()
+
+        for i in range(1, len(df)):
+            if df['EMA9'][i-1] < df['EMA21'][i-1] and df['EMA9'][i] > df['EMA21'][i]:
+                signals.append({'time': df['Datetime'][i], 'price': df[close_col][i], 'type': 'BUY'})
+            elif df['EMA9'][i-1] > df['EMA21'][i-1] and df['EMA9'][i] < df['EMA21'][i]:
+                signals.append({'time': df['Datetime'][i], 'price': df[close_col][i], 'type': 'SELL'})
+    else:
+        st.error("❌ No valid 'Close' column found in data.")
+
 
 # ---------------------- Plotting
 def plot_chart(df, signals):
