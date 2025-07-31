@@ -5,16 +5,41 @@ from ta.trend import EMAIndicator
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
+# --- NIFTY 50 list
+nifty_50 = [
+    "ADANIENT.NS", "ADANIPORTS.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AUROPHARMA.NS", "AXISBANK.NS",
+    "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "BAJFINANCE.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS",
+    "BHARATFORG.NS", "BHARTIARTL.NS", "BIOCON.NS", "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "CHOLAFIN.NS",
+    "CIPLA.NS", "COALINDIA.NS", "COLPAL.NS", "DABUR.NS", "DIVISLAB.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS",
+    "GAIL.NS", "GODREJCP.NS", "GRASIM.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFC.NS", "HDFCBANK.NS", "HDFCLIFE.NS",
+    "HEROMOTOCO.NS", "HINDALCO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFCFIRSTB.NS",
+    "IGL.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "ITC.NS", "JINDALSTEL.NS",
+    "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS", "LTIM.NS", "LTI.NS", "LUPIN.NS", "M&M.NS", "MARICO.NS", "MARUTI.NS",
+    "MCDOWELL-N.NS", "MOTHERSON.NS", "NAUKRI.NS", "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "ONGC.NS", "PAGEIND.NS",
+    "PEL.NS", "PETRONET.NS", "PIIND.NS", "PIDILITIND.NS", "PNB.NS", "POWERGRID.NS", "RECLTD.NS", "RELIANCE.NS",
+    "SAIL.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "TATACHEM.NS",
+    "TATACONSUM.NS", "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS",
+    "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZEEL.NS"
+]
+
 # --- UI Setup
 st.set_page_config(layout="wide")
-st.title("📈 Moving Average Crossover with Volume Confirmation Intraday Strategy")
+st.title("📈 MA Crossover + Volume Confirmation Intraday Strategy")
 
-# --- Sidebar Inputs
-ticker = st.sidebar.text_input("Enter Stock Symbol", value="RELIANCE.NS")
+# --- Sidebar inputs
+st.sidebar.header("Settings")
+
+mode = st.sidebar.radio("Select Mode", ["Single Stock", "Scan NIFTY 50"])
 start_date = st.sidebar.date_input("Start Date", datetime.now() - timedelta(days=10))
 end_date = st.sidebar.date_input("End Date", datetime.now())
 interval = st.sidebar.selectbox("Interval", ['5m', '15m'], index=0)
 
+if mode == "Single Stock":
+    ticker = st.sidebar.text_input("Enter Stock Symbol", value="RELIANCE.NS")
+else:
+    ticker = st.sidebar.selectbox("Select Stock from NIFTY 50", nifty_50)
+
+# --- Data loader
 @st.cache_data(ttl=600)
 def load_data(symbol, start, end, interval):
     df = yf.download(symbol, start=start, end=end + timedelta(days=1), interval=interval, progress=False)
@@ -43,7 +68,6 @@ def backtest_ma_volume_strategy(df, close_col, volume_col):
     df['EMA20'] = EMAIndicator(close=df[close_col], window=20).ema_indicator()
     df['AvgVol20'] = df[volume_col].rolling(window=20).mean()
 
-    # Signals: 1 for Buy, -1 for Sell, 0 for hold
     df['EMA5_prev'] = df['EMA5'].shift(1)
     df['EMA20_prev'] = df['EMA20'].shift(1)
 
@@ -80,7 +104,6 @@ def backtest_ma_volume_strategy(df, close_col, volume_col):
             position = None
             entry_index = None
 
-    # Close open position at end
     if position == 'LONG' and entry_index is not None:
         entry_price = df.at[entry_index, close_col]
         exit_price = df.iloc[-1][close_col]
@@ -115,61 +138,89 @@ def calc_performance(trades):
         'Max Drawdown': round(max_drawdown, 2),
     }
 
-# --- Main
-df = load_data(ticker, start_date, end_date, interval)
+def plot_strategy_chart(df, trades, open_col, high_col, low_col, close_col, ticker):
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=df['Datetime'], open=df[open_col], high=df[high_col],
+        low=df[low_col], close=df[close_col], name='Candles'))
+    fig.add_trace(go.Scatter(x=df['Datetime'], y=df['EMA5'], line=dict(color='blue'), name='EMA5'))
+    fig.add_trace(go.Scatter(x=df['Datetime'], y=df['EMA20'], line=dict(color='orange'), name='EMA20'))
+    fig.add_trace(go.Scatter(x=df['Datetime'], y=df['AvgVol20'] / df['AvgVol20'].max() * df[close_col].max(),
+                             mode='lines', line=dict(color='purple', dash='dot'), name='Avg Volume (scaled)'))
 
-if df.empty:
-    st.warning("⚠️ No data available for selected parameters.")
-else:
-    open_col = find_column(df, "open")
-    high_col = find_column(df, "high")
-    low_col = find_column(df, "low")
-    close_col = find_column(df, "close")
-    volume_col = find_column(df, "volume")
+    for trade in trades:
+        fig.add_trace(go.Scatter(
+            x=[trade['Entry Time']], y=[trade['Entry Price']],
+            mode='markers+text',
+            marker=dict(color='green', size=12, symbol='triangle-up'),
+            text=["BUY"], textposition='bottom center'))
+        fig.add_trace(go.Scatter(
+            x=[trade['Exit Time']], y=[trade['Exit Price']],
+            mode='markers+text',
+            marker=dict(color='red', size=12, symbol='triangle-down'),
+            text=["SELL"], textposition='top center'))
 
-    if None in [open_col, high_col, low_col, close_col, volume_col]:
-        st.error("❌ Required OHLCV columns not found in data.")
+    fig.update_layout(title=f"{ticker} - MA Crossover + Volume Confirmation",
+                      height=600, xaxis_rangeslider_visible=False)
+    return fig
+
+
+# === Main flow ===
+if mode == "Single Stock":
+    df = load_data(ticker, start_date, end_date, interval)
+    if df.empty:
+        st.warning(f"No data for {ticker} with selected parameters.")
     else:
-        trades, df = backtest_ma_volume_strategy(df, close_col, volume_col)
+        open_col = find_column(df, "open")
+        high_col = find_column(df, "high")
+        low_col = find_column(df, "low")
+        close_col = find_column(df, "close")
+        volume_col = find_column(df, "volume")
 
-        # Plot chart
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=df['Datetime'], open=df[open_col], high=df[high_col],
-            low=df[low_col], close=df[close_col], name='Candles'))
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['EMA5'], line=dict(color='blue'), name='EMA5'))
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['EMA20'], line=dict(color='orange'), name='EMA20'))
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['AvgVol20'] / df['AvgVol20'].max() * df[close_col].max(),
-                                 mode='lines', line=dict(color='purple', dash='dot'), name='Avg Volume (scaled)'))
-
-        # Mark trades
-        for trade in trades:
-            fig.add_trace(go.Scatter(
-                x=[trade['Entry Time']], y=[trade['Entry Price']],
-                mode='markers+text',
-                marker=dict(color='green', size=12, symbol='triangle-up'),
-                text=["BUY"], textposition='bottom center'
-            ))
-            fig.add_trace(go.Scatter(
-                x=[trade['Exit Time']], y=[trade['Exit Price']],
-                mode='markers+text',
-                marker=dict(color='red', size=12, symbol='triangle-down'),
-                text=["SELL"], textposition='top center'
-            ))
-
-        fig.update_layout(title=f"{ticker} - MA Crossover + Volume Confirmation",
-                          height=600, xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Performance metrics
-        perf = calc_performance(trades)
-        st.subheader("📊 Backtest Performance Metrics")
-        if perf:
-            st.write(perf)
+        if None in [open_col, high_col, low_col, close_col, volume_col]:
+            st.error("Required OHLCV columns missing in data.")
         else:
-            st.info("No trades found during backtest period.")
+            trades, df = backtest_ma_volume_strategy(df, close_col, volume_col)
+            st.plotly_chart(plot_strategy_chart(df, trades, open_col, high_col, low_col, close_col, ticker), use_container_width=True)
 
-        # Trades log
-        st.subheader("📋 Trades Log")
-        trades_df = pd.DataFrame(trades)
-        st.dataframe(trades_df)
+            perf = calc_performance(trades)
+            st.subheader("📊 Performance Metrics")
+            if perf:
+                st.write(perf)
+            else:
+                st.info("No trades found.")
+
+            st.subheader("📋 Trades Log")
+            st.dataframe(pd.DataFrame(trades))
+
+else:
+    st.write("### Bulk scan for all NIFTY 50 stocks")
+    if st.button("Run Scan"):
+        results = []
+        progress_bar = st.progress(0)
+        for i, symbol in enumerate(nifty_50):
+            df = load_data(symbol, start_date, end_date, interval)
+            if df.empty:
+                continue
+            open_col = find_column(df, "open")
+            high_col = find_column(df, "high")
+            low_col = find_column(df, "low")
+            close_col = find_column(df, "close")
+            volume_col = find_column(df, "volume")
+            if None in [open_col, high_col, low_col, close_col, volume_col]:
+                continue
+            trades, _ = backtest_ma_volume_strategy(df, close_col, volume_col)
+            perf = calc_performance(trades)
+            if perf:
+                perf['Symbol'] = symbol
+                results.append(perf)
+            progress_bar.progress((i + 1) / len(nifty_50))
+
+        if results:
+            results_df = pd.DataFrame(results)
+            results_df = results_df.sort_values(by='Total Profit', ascending=False).reset_index(drop=True)
+            st.subheader("📈 Scan Results (Sorted by Total Profit)")
+            st.dataframe(results_df)
+        else:
+            st.info("No profitable trades found in scan.")
+
