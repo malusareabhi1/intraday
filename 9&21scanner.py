@@ -9,7 +9,7 @@ st.set_page_config(layout="wide")
 st.title("📊 NIFTY 50 - EMA 9/21 Crossover Scanner")
 
 # ---------------------- Inputs
-start_date = datetime.now() - timedelta(days=3)
+start_date = datetime.now() - timedelta(days=4)
 end_date = datetime.now()
 interval = '5m'
 
