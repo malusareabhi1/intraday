@@ -11,7 +11,7 @@ st.title("📊 NIFTY 50 - EMA 9/21 Crossover Scanner")
 # ---------------------- Inputs
 start_date = datetime.now() - timedelta(days=3)
 end_date = datetime.now()
-interval = '15m'
+interval = '5m'
 
 # ---------------------- NIFTY 50 List (Editable if needed)
 nifty_50 = [
