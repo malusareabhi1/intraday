@@ -1,7 +1,2 @@
-yfinance 
-streamlit
-pandas
-plotly
-timedelta
-EMAIndicator
-datetime
+yfinance
+
