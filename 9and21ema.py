@@ -22,16 +22,24 @@ def load_data(symbol, start, end, interval):
     df = yf.download(symbol, start=start, end=end + timedelta(days=1), interval=interval)
     if df.empty:
         return pd.DataFrame()
-    df.columns = df.columns.str.strip().str.title()  # Robust capitalization
+
+    # Flatten multi-level column names (if any)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [' '.join(col).strip() for col in df.columns.values]
+
+    # Now normalize column names
+    df.columns = df.columns.str.strip().str.title()
+
     df.dropna(inplace=True)
     df.reset_index(inplace=True)
+
     if 'Datetime' not in df.columns:
         if 'Date' in df.columns:
             df.rename(columns={'Date': 'Datetime'}, inplace=True)
         else:
             df.insert(0, 'Datetime', pd.to_datetime(df.index))
-    return df
 
+    return df
 
 df = load_data(ticker, start_date, end_date, interval)
 
